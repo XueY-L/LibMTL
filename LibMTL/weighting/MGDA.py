@@ -35,6 +35,7 @@ class MGDA(AbsWeighting):
             return gamma, cost
 
         def _min_norm_2d(grad_mat):
+            print(grad_mat.size())
             dmin = 1e8
             for i in range(grad_mat.size()[0]):
                 for j in range(i+1, grad_mat.size()[0]):

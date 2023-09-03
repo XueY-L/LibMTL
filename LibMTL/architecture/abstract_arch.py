@@ -33,7 +33,7 @@ class AbsArchitecture(nn.Module):
             self.rep_tasks = {}
             self.rep = {}
     
-    def forward(self, inputs, task_name=None, param_ls=None):
+    def forward(self, inputs, task_name=None):
         r"""
 
         Args: 
@@ -53,7 +53,6 @@ class AbsArchitecture(nn.Module):
             ss_rep = self._prepare_rep(ss_rep, task, same_rep)
             out[task] = self.decoders[task](ss_rep)
         return out
-        # 写一个根据out的参数加权方法，并返回加权后的结果
     
     def get_share_params(self):
         r"""Return the shared parameters of the model.

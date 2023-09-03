@@ -103,7 +103,7 @@ class _PerformanceMeter(object):
         if mode == 'val':
             improvement = count_improvement(self.base_result, new_result, self.weight)
             self.improvement = improvement
-            if improvement > self.best_result['improvement']:
+            if improvement > self.best_result['improvement']:  # 求的是所有任务的improvement均值，其中improvement是(base-new)/base
                 self.best_result['improvement'] = improvement
                 self.best_result['epoch'] = epoch
                 print(f'best_result[\'improvement\']: {improvement}, self.best_result[\'epoch\']: {epoch}')

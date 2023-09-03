@@ -239,14 +239,13 @@ class Trainer(nn.Module):
             if val_dataloaders is not None:
                 self.meter.has_val = True
                 val_improvement = self.test(val_dataloaders, epoch, mode='val', return_improvement=True)
-                print(val_improvement)
             # self.test(test_dataloaders, epoch, mode='test')
             if self.scheduler is not None:
                 self.scheduler.step()
             if self.save_path is not None and self.meter.best_result['epoch'] == epoch:  # 在self.test的self.meter.display中，会更新每个val结果相对于base_result高多少，取高得最多的（取所有任务的improvement平均）
                 # torch.save(self.model.state_dict(), os.path.join(self.save_path, f'best_epoch{epoch}.pt'))
                 torch.save(self.model.state_dict(), os.path.join(self.save_path, f'test.pt'))
-                print('Save Model {} to {}\n'.format(epoch, os.path.join(self.save_path, 'best.pt')))
+                print('Save Model {} to {}\n'.format(epoch, os.path.join(self.save_path, 'test.pt')))
         self.meter.display_best_result()
         if return_weight:
             return self.batch_weight

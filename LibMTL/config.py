@@ -26,7 +26,7 @@ _parser.add_argument('--lr', type=float, default=1e-4, help='learning rate for a
 _parser.add_argument('--momentum', type=float, default=0.9, help='momentum for sgd')
 _parser.add_argument('--weight_decay', type=float, default=1e-5, help='weight decay for all types of optim')
 ## scheduler
-_parser.add_argument('--scheduler', type=str, #default='step',
+_parser.add_argument('--scheduler', type=str, default=None,
                     help='learning rate scheduler for training, option: step, cos, exp')
 _parser.add_argument('--step_size', type=int, default=100, help='step size for StepLR')
 _parser.add_argument('--gamma', type=float, default=0.5, help='gamma for StepLR')

@@ -35,7 +35,6 @@ class DomainNetLoader:
         dataset_path=None,
         batch_size=64,
         num_workers=4,
-        use_gpu=False,
         _C=None, 
     ):
         super(DomainNetLoader, self).__init__()
@@ -43,7 +42,6 @@ class DomainNetLoader:
         self.dataset_path = dataset_path
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.use_gpu = use_gpu
         self._C = _C
         # -------domainbed----------
         # https://github.com/facebookresearch/DomainBed/blob/main/domainbed/datasets.py

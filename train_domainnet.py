@@ -46,7 +46,6 @@ def main(params):
         dataset_path=params.dataset_path,
         batch_size=params.bs,
         num_workers=8,
-        use_gpu=True,
     ).get_source_dloaders(domain_ls=[x for x in task_name if x != 'clipart'])
     
     train_dataloaders = {task: data_loader[task]['train'] for task in task_name}
