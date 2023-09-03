@@ -13,20 +13,20 @@ class _PerformanceMeter(object):
         self.task_num = len(self.task_dict)
         self.task_name = list(self.task_dict.keys())
         
-        self.weight = {task: self.task_dict[task]['weight'] for task in self.task_name}
-        self.base_result = base_result
-        self.best_result = {'improvement': -1e+2, 'epoch': 0, 'result': 0}
-        self.improvement = None
+        self.weight = {task: self.task_dict[task]['weight'] for task in self.task_name}  # 代表metrics越高越好
+        self.base_result = base_result  # ?
+        self.best_result = {'improvement': -1e+2, 'epoch': 0, 'result': 0}  # ?
+        self.improvement = None  # ?
         
-        self.losses = {task: self.task_dict[task]['loss_fn'] for task in self.task_name}
-        self.metrics = {task: self.task_dict[task]['metrics_fn'] for task in self.task_name}
+        self.losses = {task: self.task_dict[task]['loss_fn'] for task in self.task_name}  # 每个任务指定的loss函数，在我们这是交叉熵
+        self.metrics = {task: self.task_dict[task]['metrics_fn'] for task in self.task_name}  # 同上，每个任务的top1 accuracy
         
-        self.results = {task:[] for task in self.task_name}
-        self.loss_item = np.zeros(self.task_num)
+        self.results = {task:[] for task in self.task_name}  # ?
+        self.loss_item = np.zeros(self.task_num)  # ?
         
         self.has_val = False
         
-        self._init_display()
+        self._init_display()  # 打印格式
         
     def record_time(self, mode='begin'):
         if mode == 'begin':
@@ -37,6 +37,9 @@ class _PerformanceMeter(object):
             raise ValueError('No support time mode {}'.format(mode))
         
     def update(self, preds, gts, task_name=None):
+        '''
+        根据task_name，更新相应域的metrics，即top1 accuracy
+        '''
         with torch.no_grad():
             if task_name is None:
                 for tn, task in enumerate(self.task_name):
@@ -45,12 +48,18 @@ class _PerformanceMeter(object):
                 self.metrics[task_name].update_fun(preds, gts)
         
     def get_score(self):
+        '''
+        先调用这个函数，再展示self.metrics, self.losses
+        '''
         with torch.no_grad():
             for tn, task in enumerate(self.task_name):
                 self.results[task] = self.metrics[task].score_fun()
                 self.loss_item[tn] = self.losses[task]._average_loss()
     
     def _init_display(self):
+        '''
+        在这个类的初始化里调用，打印后面loss和accuracy展示的格式
+        '''
         print('='*40)
         print('LOG FORMAT | ', end='')
         for tn, task in enumerate(self.task_name):
@@ -66,9 +75,9 @@ class _PerformanceMeter(object):
                 self.base_result = self.results
             if mode == 'train':
                 print('Epoch: {:04d} | '.format(epoch), end='')
-            if not self.has_val and mode == 'test':
-                self._update_best_result(self.results, epoch)
-            if self.has_val and mode != 'train':
+            # if not self.has_val and mode == 'test':  # 如果是测试集，且没有验证集
+            #     self._update_best_result(self.results, epoch)
+            if self.has_val and mode != 'train':  # 如果是验证集
                 self._update_best_result_by_val(self.results, epoch, mode)
         if mode == 'train':
             p_mode = 'TRAIN'
@@ -83,7 +92,7 @@ class _PerformanceMeter(object):
                 print('{:.4f} '.format(self.results[task][i]), end='')
             print('| ', end='')
         print('Time: {:.4f}'.format(self.end_time-self.beg_time), end='')
-        print(' | ', end='') if mode!='test' else print()
+        print(' | ') if mode=='train' else print(' | \n')
         
     def display_best_result(self):
         print('='*40)
@@ -97,17 +106,18 @@ class _PerformanceMeter(object):
             if improvement > self.best_result['improvement']:
                 self.best_result['improvement'] = improvement
                 self.best_result['epoch'] = epoch
+                print(f'best_result[\'improvement\']: {improvement}, self.best_result[\'epoch\']: {epoch}')
         else:
             if epoch == self.best_result['epoch']:
                 self.best_result['result'] = new_result
         
-    def _update_best_result(self, new_result, epoch):
-        improvement = count_improvement(self.base_result, new_result, self.weight)
-        self.improvement = improvement
-        if improvement > self.best_result['improvement']:
-            self.best_result['improvement'] = improvement
-            self.best_result['epoch'] = epoch
-            self.best_result['result'] = new_result
+    # def _update_best_result(self, new_result, epoch):
+    #     improvement = count_improvement(self.base_result, new_result, self.weight)
+    #     self.improvement = improvement
+    #     if improvement > self.best_result['improvement']:
+    #         self.best_result['improvement'] = improvement
+    #         self.best_result['epoch'] = epoch
+    #         self.best_result['result'] = new_result
         
     def reinit(self):
         for task in self.task_name:

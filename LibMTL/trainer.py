@@ -138,12 +138,10 @@ class Trainer(nn.Module):
         else:
             self.scheduler = None
 
-    def _process_data(self, loader):
-        try:
-            data, label = next(loader[1])
-        except:
+    def _process_data(self, loader, reset_iter=False):
+        if reset_iter:
             loader[1] = iter(loader[0])
-            data, label = next(loader[1])
+        data, label = next(loader[1])
         data = data.to(self.device, non_blocking=True)
         if not self.multi_input:
             for task in self.task_name:
@@ -171,7 +169,7 @@ class Trainer(nn.Module):
             for tn, task in enumerate(self.task_name):
                 train_losses[tn] = self.meter.losses[task]._update_loss(preds[task], gts[task])
         else:
-            train_losses = self.meter.losses[task_name]._update_loss(preds, gts)
+            train_losses = self.meter.losses[task_name]._update_loss(preds, gts)  # 就是用preds和gts算交叉熵损失
         return train_losses
         
     def _prepare_dataloaders(self, dataloaders):
@@ -203,50 +201,52 @@ class Trainer(nn.Module):
         '''
         # train_loader是每个域的字典，其中values是dataloader和dataloader迭代器
         train_loader, train_batch = self._prepare_dataloaders(train_dataloaders)
-        train_batch = max(train_batch) if self.multi_input else train_batch  #为什么要取max？
+        print(f'每个域batch数量{train_batch}')
+        train_batch = min(train_batch) if self.multi_input else train_batch  #为什么要取max？
+        print(f'每个域取{train_batch}个batch')
         
-        self.batch_weight = np.zeros([self.task_num, epochs, train_batch])
-        self.model.train_loss_buffer = np.zeros([self.task_num, epochs])
+        self.batch_weight = np.zeros([self.task_num, epochs, train_batch])  # 给每个batch一个值？这里放什么
         self.model.epochs = epochs
         for epoch in range(epochs):
             self.model.epoch = epoch
             self.model.train()
             self.meter.record_time('begin')
-            for batch_index in range(train_batch):
+            reset_iter = True  # 每个epoch结束后，loader[1]迭代器会耗尽，此时需要用loader[0]重新制作迭代器
+            for batch_index in range(train_batch):  # 第batch_index个batch
                 # multi_input
-                train_losses = torch.zeros(self.task_num).to(self.device)
-                for tn, task in enumerate(self.task_name):
-                    train_input, train_gt = self._process_data(train_loader[task])
-                    train_pred = self.model(train_input, task)
-                    train_pred = train_pred[task]
-                    train_pred = self.process_preds(train_pred, task)
-                    train_losses[tn] = self._compute_loss(train_pred, train_gt, task)
-                    self.meter.update(train_pred, train_gt, task)
+                train_losses = torch.zeros(self.task_num).to(self.device)  # 存放每个task的loss
+                for task_idx, task in enumerate(self.task_name):
+                    train_input, train_gt = self._process_data(train_loader[task], reset_iter)  # torch.Size([bs, 3, 224, 224]) torch.Size([bs])
+                    train_pred = self.model(train_input, task)  # {'task(domain_name)': torch.Size([bs, 345])}
+                    train_pred = train_pred[task]  # 从字典里提取预测结果
+                    train_pred = self.process_preds(train_pred, task)  # 直接返回
+                    train_losses[task_idx] = self._compute_loss(train_pred, train_gt, task)  # 对前两个算交叉熵
+                    self.meter.update(train_pred, train_gt, task)  # 更新meter.metrics，即accuracy，上一个是loss
+                    # print(f'batch{batch_index}:  {task} top1 {self.meter.metrics[task].score_last()}')
+                reset_iter = False
 
                 self.optimizer.zero_grad()
-                w = self.model.backward(train_losses, **self.kwargs['weight_args'])
+                w = self.model.backward(train_losses, **self.kwargs['weight_args'])  # train_losses是每个任务的loss，拿去做反向传播
                 if w is not None:
-                    self.batch_weight[:, epoch, batch_index] = w
+                    self.batch_weight[:, epoch, batch_index] = w  # len=任务数的一维矩阵，不知道返回的是啥
                 self.optimizer.step()
             
             self.meter.record_time('end')
-            self.meter.get_score()
-            self.model.train_loss_buffer[:, epoch] = self.meter.loss_item
+            self.meter.get_score()  # 计算self.metrics, self.losses
             self.meter.display(epoch=epoch, mode='train')
-            self.meter.reinit()
+            self.meter.reinit()  # 初始化，以记录下一个epoch
             
             if val_dataloaders is not None:
                 self.meter.has_val = True
                 val_improvement = self.test(val_dataloaders, epoch, mode='val', return_improvement=True)
+                print(val_improvement)
             # self.test(test_dataloaders, epoch, mode='test')
             if self.scheduler is not None:
-                if self.scheduler_param['scheduler'] == 'reduce' and val_dataloaders is not None:
-                    self.scheduler.step(val_improvement)
-                else:
-                    self.scheduler.step()
-            if self.save_path is not None and self.meter.best_result['epoch'] == epoch:
-                torch.save(self.model.state_dict(), os.path.join(self.save_path, 'best_weighter.pt'))
-                print('Save Model {} to {}'.format(epoch, os.path.join(self.save_path, 'best.pt')))
+                self.scheduler.step()
+            if self.save_path is not None and self.meter.best_result['epoch'] == epoch:  # 在self.test的self.meter.display中，会更新每个val结果相对于base_result高多少，取高得最多的（取所有任务的improvement平均）
+                # torch.save(self.model.state_dict(), os.path.join(self.save_path, f'best_epoch{epoch}.pt'))
+                torch.save(self.model.state_dict(), os.path.join(self.save_path, f'test.pt'))
+                print('Save Model {} to {}\n'.format(epoch, os.path.join(self.save_path, 'best.pt')))
         self.meter.display_best_result()
         if return_weight:
             return self.batch_weight
@@ -265,25 +265,17 @@ class Trainer(nn.Module):
         self.model.eval()
         self.meter.record_time('begin')
         with torch.no_grad():
-            if not self.multi_input:
-                for batch_index in range(test_batch):
-                    test_inputs, test_gts = self._process_data(test_loader)
-                    test_preds = self.model(test_inputs)
-                    test_preds = self.process_preds(test_preds)
-                    test_losses = self._compute_loss(test_preds, test_gts)
-                    self.meter.update(test_preds, test_gts)
-            else:
-                for tn, task in enumerate(self.task_name):
-                    for batch_index in range(test_batch[tn]):
-                        test_input, test_gt = self._process_data(test_loader[task])
-                        test_pred = self.model(test_input, task)
-                        test_pred = test_pred[task]
-                        test_pred = self.process_preds(test_pred)
-                        test_loss = self._compute_loss(test_pred, test_gt, task)
-                        self.meter.update(test_pred, test_gt, task)
+            for tn, task in enumerate(self.task_name):
+                test_loader[task][1] = iter(test_loader[task][0])
+                for batch_index in range(test_batch[tn]):
+                    test_input, test_gt = self._process_data(test_loader[task])
+                    test_pred = self.model(test_input, task)
+                    test_pred = test_pred[task]
+                    test_pred = self.process_preds(test_pred)
+                    test_loss = self._compute_loss(test_pred, test_gt, task)
+                    self.meter.update(test_pred, test_gt, task)  # 更新meter.metrics，即accuracy，上一个是loss（不需要）
         self.meter.record_time('end')
         self.meter.get_score()
-        print()
         self.meter.display(epoch=epoch, mode=mode)
         improvement = self.meter.improvement
         self.meter.reinit()

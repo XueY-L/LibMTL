@@ -48,6 +48,7 @@ class AccMetric(AbsMetric):
         
     def update_fun(self, pred, gt):
         r"""
+        添加预测结果，记录预测正确的样本个数和bs大小
         """
         pred = F.softmax(pred, dim=-1).max(-1)[1]
         self.record.append(gt.eq(pred).sum().item())
@@ -55,8 +56,15 @@ class AccMetric(AbsMetric):
         
     def score_fun(self):
         r"""
+        返回现有所有预测结果的top1精度
         """
         return [(sum(self.record)/sum(self.bs))]
+
+    def score_last(self):
+        r"""
+        返回最后一次的精度
+        """
+        return self.record[-1] / self.bs[-1]
 
 
 # L1 Error

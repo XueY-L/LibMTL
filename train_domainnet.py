@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from data.office import office_dataloader
+from data.domainnet import DomainNetLoader
+from utils.load_model import load_model
 
 from LibMTL import Trainer
 from LibMTL.model import resnet18
@@ -17,21 +19,18 @@ from LibMTL.loss import CELoss
 from LibMTL.metrics import AccMetric
 
 def parse_args(parser):
-    parser.add_argument('--dataset', default='office-home', type=str, help='office-31, office-home')
+    parser.add_argument('--dataset', default='domainnet', type=str, help='domainnet, office-home')
     parser.add_argument('--bs', default=32, type=int, help='batch size')
-    parser.add_argument('--epochs', default=1, type=int, help='training epochs')
-    parser.add_argument('--dataset_path', default='/home/yxue/datasets/OfficeHomeDataset_10072016/', type=str, help='dataset path')
+    parser.add_argument('--epochs', default=100, type=int, help='training epochs')
+    parser.add_argument('--dataset_path', default='/home/yxue/datasets/DomainNet/', type=str, help='dataset path')
     return parser.parse_args()
 
 def main(params):
     kwargs, optim_param, scheduler_param = prepare_args(params)
 
-    if params.dataset == 'office-31':
-        task_name = ['amazon', 'dslr', 'webcam']
-        class_num = 31
-    elif params.dataset == 'office-home':
-        task_name = ['Art', 'Clipart', 'Product', 'Real_World']
-        class_num = 65
+    if params.dataset == 'domainnet':
+        task_name = ['infograph', 'painting', 'quickdraw', 'real', 'sketch']
+        class_num = 345
     else:
         raise ValueError('No support dataset {}'.format(params.dataset))
     
@@ -39,10 +38,17 @@ def main(params):
     task_dict = {task: {'metrics': ['Acc'],
                        'metrics_fn': AccMetric(),
                        'loss_fn': CELoss(),
-                       'weight': [1]} for task in task_name}
+                       'weight': [1]}   # weight用在count_improvement方法中，代表metrics越高越好
+                       for task in task_name}  
     
     # prepare dataloaders
-    data_loader, _ = office_dataloader(dataset=params.dataset, batchsize=params.bs, root_path=params.dataset_path)
+    data_loader, _ = DomainNetLoader(
+        dataset_path=params.dataset_path,
+        batch_size=params.bs,
+        num_workers=8,
+        use_gpu=True,
+    ).get_source_dloaders(domain_ls=[x for x in task_name if x != 'clipart'])
+    
     train_dataloaders = {task: data_loader[task]['train'] for task in task_name}
     val_dataloaders = {task: data_loader[task]['val'] for task in task_name}
     test_dataloaders = {task: data_loader[task]['test'] for task in task_name}
@@ -71,7 +77,7 @@ def main(params):
     # encoder共享，decoder每个域有一个
     decoders = nn.ModuleDict({task: nn.Linear(512, class_num) for task in list(task_dict.keys())})
     
-    officeModel = Trainer(task_dict=task_dict, 
+    MTL_trainer = Trainer(task_dict=task_dict, 
                           weighting=weighting_method.__dict__[params.weighting], 
                           architecture=architecture_method.__dict__[params.arch], 
                           encoder_class=Encoder, 
@@ -83,7 +89,7 @@ def main(params):
                           save_path=params.save_path,
                           load_path=params.load_path,
                           **kwargs)
-    officeModel.train(train_dataloaders=train_dataloaders, 
+    MTL_trainer.train(train_dataloaders=train_dataloaders, 
                       val_dataloaders=val_dataloaders,
                       test_dataloaders=test_dataloaders, 
                       epochs=params.epochs)
